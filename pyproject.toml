@@ -54,6 +54,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long
+    "B008",  # FastAPI uses function calls in default arguments (Depends, Query)
 ]
 
 [tool.pytest.ini_options]

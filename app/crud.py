@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models import Task, User
-from app.schemas import UserCreate, TaskCreate, TaskUpdate, TaskStatus
+from app.schemas import TaskCreate, TaskStatus, TaskUpdate, UserCreate
 from app.security import get_password_hash
 
 
