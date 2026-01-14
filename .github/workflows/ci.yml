@@ -15,6 +15,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 env:
   REGISTRY: docker.io
   IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/todo-api
@@ -94,7 +99,7 @@ jobs:
           python -m pip install --upgrade pip poetry
           poetry install
 
-      - name: Initialize CodeQL
+      - name: Run Bandit SAST scan
         run: poetry run bandit -r app/ -f json -o bandit-report.json
         continue-on-error: true
 
@@ -104,7 +109,7 @@ jobs:
           name: bandit-report
           path: bandit-report.json
 
-      - name: Run pip-audit for dependency vulnerabilities
+      - name: Run pip-audit for SCA vulnerabilities
         run: poetry run pip-audit
         continue-on-error: true
 
@@ -115,6 +120,8 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+        with:
+          wait-for-processing: true
 
   docker-build-scan:
     name: Docker Build and Security Scan
