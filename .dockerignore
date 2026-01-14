@@ -1,0 +1,39 @@
+# GitHub Actions environment
+node_modules/
+.nox/
+.tox/
+
+# Local environment
+.venv
+env/
+venv/
+
+# Editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Dependencies
+node_modules/
+.python-version
+
+# Environment files (but keep .env.example)
+.env
+.env.local
+.env.*.local
