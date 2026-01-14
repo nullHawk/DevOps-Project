@@ -1,5 +1,7 @@
 """FastAPI application factory and main entrypoint."""
 
+import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -24,14 +26,22 @@ from app.schemas import (
 )
 from app.security import create_access_token, get_current_user, verify_password
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan - create database tables on startup."""
+    # Skip table creation during testing (tests handle their own setup)
+    if os.environ.get("TESTING") != "1":
+        Base.metadata.create_all(bind=engine)
+    yield
+
 
 # Create FastAPI app
 app = FastAPI(
     title=settings.app_name,
     description="Advanced DevOps CI/CD for a Containerized Python Service - To-Do API",
     version=__version__,
+    lifespan=lifespan,
 )
 
 # Add CORS middleware

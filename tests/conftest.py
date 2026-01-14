@@ -1,5 +1,11 @@
 """Conftest for pytest fixtures."""
 
+import os
+
+# Set testing environment variables BEFORE any app imports
+os.environ["TESTING"] = "1"
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+
 from collections.abc import Generator
 
 import pytest
