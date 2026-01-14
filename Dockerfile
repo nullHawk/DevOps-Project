@@ -1,10 +1,10 @@
 # Multi-stage build
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /tmp
 
-# Install Poetry
-RUN pip install poetry
+# Install Poetry and export plugin
+RUN pip install poetry poetry-plugin-export
 
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
