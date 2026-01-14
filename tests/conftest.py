@@ -6,15 +6,15 @@ import os
 os.environ["TESTING"] = "1"
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 
-from collections.abc import Generator
+from collections.abc import Generator  # noqa: E402
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
-from app.database import Base, get_db
-from app.main import app
+from app.database import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 # Use SQLite for tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
