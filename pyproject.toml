@@ -4,7 +4,6 @@ version = "1.0.0"
 description = "Advanced DevOps CI/CD for a Containerized Python Service - To-Do API"
 authors = ["DevOps Team"]
 readme = "README.md"
-python = "^3.11"
 
 [tool.poetry.dependencies]
 python = "^3.11"
