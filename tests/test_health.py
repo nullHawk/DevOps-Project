@@ -1,8 +1,5 @@
 """Tests for health and version endpoints."""
 
-from datetime import datetime
-
-import pytest
 from fastapi.testclient import TestClient
 
 

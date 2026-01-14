@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app import crud
-from app.schemas import UserCreate, TaskStatus
+from app.schemas import UserCreate
 
 
 def create_test_user_and_get_token(client: TestClient, db: Session, user_data: dict) -> tuple[str, int]:
@@ -67,7 +67,6 @@ def test_list_tasks(
 ):
     """Test listing tasks."""
     # Create tasks
-    token = auth_token["Authorization"].split(" ")[1]
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
     assert response.status_code == 201
 
@@ -85,7 +84,7 @@ def test_list_tasks_by_status(
     """Test filtering tasks by status."""
     # Create task
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
-    task_id = response.json()["id"]
+    assert response.status_code == 201
 
     # List todos
     response = client.get("/tasks?status=todo", headers=auth_token)
@@ -199,7 +198,7 @@ def test_task_summary(
     task_id_1 = response.json()["id"]
 
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
-    task_id_2 = response.json()["id"]
+    assert response.status_code == 201
 
     # Mark one as completed
     client.put(

@@ -1,9 +1,10 @@
 """CRUD operations for database models."""
 
 from datetime import datetime
+
 from sqlalchemy.orm import Session
 
-from app.models import User, Task
+from app.models import Task, User
 from app.schemas import UserCreate, TaskCreate, TaskUpdate, TaskStatus
 from app.security import get_password_hash
 

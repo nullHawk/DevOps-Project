@@ -1,16 +1,14 @@
 """Conftest for pytest fixtures."""
 
-import os
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base, get_db
 from app.main import app
-from app.config import Settings
 
 # Use SQLite for tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"

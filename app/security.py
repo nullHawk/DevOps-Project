@@ -1,10 +1,9 @@
 """Security and authentication utilities."""
 
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPAuthCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
@@ -25,7 +24,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create JWT access token."""
     to_encode = data.copy()
     if expires_delta:
@@ -52,7 +51,7 @@ async def get_current_user(credentials: HTTPAuthCredentials = Depends(security))
         if username is None:
             raise credential_exception
         token_data = TokenData(username=username)
-    except JWTError:
-        raise credential_exception
+    except JWTError as err:
+        raise credential_exception from err
 
     return token_data

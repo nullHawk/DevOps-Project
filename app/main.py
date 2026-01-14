@@ -2,34 +2,27 @@
 
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app import __version__
+from app import __version__, crud
 from app.config import settings
-from app.database import get_db, engine, Base
-from app.models import Task
+from app.database import Base, engine, get_db
 from app.schemas import (
+    HealthResponse,
     TaskCreate,
     TaskResponse,
-    TaskUpdate,
     TaskStatus,
+    TaskSummary,
+    TaskUpdate,
+    Token,
+    TokenData,
     UserCreate,
     UserResponse,
-    Token,
-    HealthResponse,
     VersionResponse,
-    TaskSummary,
-    TokenData,
 )
-from app import crud
-from app.security import (
-    create_access_token,
-    get_current_user,
-    verify_password,
-    get_password_hash,
-)
+from app.security import create_access_token, get_current_user, verify_password
 
 # Create database tables
 Base.metadata.create_all(bind=engine)

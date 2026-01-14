@@ -1,8 +1,6 @@
 """Database models."""
 
-from datetime import datetime
-
-from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, Enum
+from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String, Text
 from sqlalchemy.sql import func
 
 from app.database import Base

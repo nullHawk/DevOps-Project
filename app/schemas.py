@@ -2,9 +2,8 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class TaskStatus(str, Enum):
@@ -27,10 +26,10 @@ class TaskBase(BaseModel):
     """Base task schema."""
 
     title: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=2000)
+    description: str | None = Field(None, max_length=2000)
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
-    due_date: Optional[datetime] = None
+    due_date: datetime | None = None
 
 
 class TaskCreate(TaskBase):
@@ -42,11 +41,11 @@ class TaskCreate(TaskBase):
 class TaskUpdate(BaseModel):
     """Task update schema."""
 
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = Field(None, max_length=2000)
-    status: Optional[TaskStatus] = None
-    priority: Optional[TaskPriority] = None
-    due_date: Optional[datetime] = None
+    title: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=2000)
+    status: TaskStatus | None = None
+    priority: TaskPriority | None = None
+    due_date: datetime | None = None
 
 
 class TaskResponse(TaskBase):
@@ -54,7 +53,7 @@ class TaskResponse(TaskBase):
 
     id: int
     user_id: int
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -111,7 +110,7 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     """Token data schema."""
 
-    username: Optional[str] = None
+    username: str | None = None
 
 
 class HealthResponse(BaseModel):
