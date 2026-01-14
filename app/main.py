@@ -62,7 +62,12 @@ async def version():
 
 
 # Authentication endpoints
-@app.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["Auth"])
+@app.post(
+    "/auth/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Auth"],
+)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""
     # Check if user already exists
@@ -102,7 +107,9 @@ async def login(username: str, password: str, db: Session = Depends(get_db)):
 
 
 # Task endpoints
-@app.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, tags=["Tasks"])
+@app.post(
+    "/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, tags=["Tasks"]
+)
 async def create_task(
     task: TaskCreate,
     current_user: TokenData = Depends(get_current_user),

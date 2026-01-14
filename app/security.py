@@ -46,7 +46,9 @@ async def get_current_user(credentials: HTTPAuthCredentials = Depends(security))
     )
 
     try:
-        payload = jwt.decode(credentials.credentials, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(
+            credentials.credentials, settings.secret_key, algorithms=[settings.algorithm]
+        )
         username: str = payload.get("sub")
         if username is None:
             raise credential_exception

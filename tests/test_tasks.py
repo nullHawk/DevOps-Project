@@ -8,7 +8,9 @@ from app import crud
 from app.schemas import UserCreate
 
 
-def create_test_user_and_get_token(client: TestClient, db: Session, user_data: dict) -> tuple[str, int]:
+def create_test_user_and_get_token(
+    client: TestClient, db: Session, user_data: dict
+) -> tuple[str, int]:
     """Helper to create user and get auth token."""
     # Create user
     user_create = UserCreate(**user_data)
@@ -33,9 +35,7 @@ def auth_token(client: TestClient, db: Session, test_user_data: dict):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_create_task(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_create_task(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test creating a task."""
     response = client.post(
         "/tasks",
@@ -78,9 +78,7 @@ def test_list_tasks(
     assert data[0]["title"] == test_task_data["title"]
 
 
-def test_list_tasks_by_status(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_list_tasks_by_status(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test filtering tasks by status."""
     # Create task
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
@@ -99,9 +97,7 @@ def test_list_tasks_by_status(
     assert len(data) == 0
 
 
-def test_get_task(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_get_task(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test getting a specific task."""
     # Create task
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
@@ -121,9 +117,7 @@ def test_get_nonexistent_task(client: TestClient, auth_token: dict):
     assert response.status_code == 404
 
 
-def test_update_task(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_update_task(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test updating a task."""
     # Create task
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
@@ -145,9 +139,7 @@ def test_update_task(
     assert data["status"] == "in_progress"
 
 
-def test_complete_task(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_complete_task(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test marking task as completed."""
     # Create task
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
@@ -166,9 +158,7 @@ def test_complete_task(
     assert data["completed_at"] is not None
 
 
-def test_delete_task(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_delete_task(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test deleting a task."""
     # Create task
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
@@ -189,9 +179,7 @@ def test_delete_nonexistent_task(client: TestClient, auth_token: dict):
     assert response.status_code == 404
 
 
-def test_task_summary(
-    client: TestClient, auth_token: dict, test_task_data: dict
-):
+def test_task_summary(client: TestClient, auth_token: dict, test_task_data: dict):
     """Test task summary endpoint."""
     # Create multiple tasks with different statuses
     response = client.post("/tasks", json=test_task_data, headers=auth_token)
