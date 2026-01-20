@@ -45,7 +45,6 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write
 
     outputs:
       service_url: ${{ steps.get-url.outputs.url }}
@@ -63,18 +62,7 @@ jobs:
             echo "tag=latest" >> $GITHUB_OUTPUT
           fi
 
-      # Option 1: Workload Identity Federation (Recommended for production)
-      - name: Authenticate to Google Cloud (Workload Identity)
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-        continue-on-error: true
-
-      # Option 2: Service Account Key (Fallback)
-      - name: Authenticate to Google Cloud (Service Account Key)
-        if: steps.auth.outcome == 'failure'
+      - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
