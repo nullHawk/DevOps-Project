@@ -72,6 +72,10 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet
+
       - name: Configure kubectl
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
