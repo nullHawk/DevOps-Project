@@ -98,7 +98,26 @@ jobs:
           echo "Waiting for PostgreSQL to be ready..."
           kubectl rollout status deployment/postgres \
             --namespace ${{ env.NAMESPACE }} \
-            --timeout=120s
+            --timeout=180s || {
+              echo "=== PostgreSQL deployment failed, gathering debug info ==="
+              echo ""
+              echo "=== Pod Status ==="
+              kubectl get pods -n ${{ env.NAMESPACE }} -l app=postgres -o wide
+              echo ""
+              echo "=== Pod Description ==="
+              kubectl describe pods -n ${{ env.NAMESPACE }} -l app=postgres
+              echo ""
+              echo "=== Pod Logs ==="
+              kubectl logs -n ${{ env.NAMESPACE }} -l app=postgres --tail=100 || true
+              echo ""
+              echo "=== PVC Status ==="
+              kubectl get pvc -n ${{ env.NAMESPACE }}
+              kubectl describe pvc -n ${{ env.NAMESPACE }} postgres-pvc || true
+              echo ""
+              echo "=== Events ==="
+              kubectl get events -n ${{ env.NAMESPACE }} --sort-by='.lastTimestamp'
+              exit 1
+            }
 
       - name: Update deployment image
         run: |
