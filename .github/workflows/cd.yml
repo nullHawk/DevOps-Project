@@ -93,6 +93,13 @@ jobs:
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secret.yaml
 
+          # Deploy PostgreSQL and wait for it to be ready
+          kubectl apply -f k8s/postgres.yaml
+          echo "Waiting for PostgreSQL to be ready..."
+          kubectl rollout status deployment/postgres \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout=120s
+
       - name: Update deployment image
         run: |
           # Replace placeholder with actual image

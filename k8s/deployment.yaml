@@ -87,6 +87,5 @@ metadata:
     app: todo-api
 type: Opaque
 stringData:
-  # Construct the full DATABASE_URL here
   # Format: postgresql://user:password@host:port/database
-  url: "postgresql://todo_user:REPLACE_PASSWORD@postgres-service:5432/todo_db"
+  url: "postgresql://todo_user:todo_password_123@postgres-service:5432/todo_db"
