@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-api-config
+  namespace: todo-api
+  labels:
+    app: todo-api
+data:
+  # Application configuration
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+  # Database host - update this to your Cloud SQL instance or in-cluster PostgreSQL
+  DATABASE_HOST: "postgres-service"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "todo_db"

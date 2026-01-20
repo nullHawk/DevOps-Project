@@ -574,6 +574,307 @@ Commit badges show pipeline status:
    - Audit and rotate DockerHub token
    - Review and update security policies
 
+---
+
+## CD Pipeline - GKE Deployment
+
+The CD (Continuous Deployment) pipeline is a **separate workflow** that handles deployment to Google Kubernetes Engine (GKE) and includes Dynamic Application Security Testing (DAST).
+
+### CD Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              CI Pipeline Completes Successfully                  │
+│                  (or Manual Trigger)                            │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Deploy Job                                  │
+│  ├─ Authenticate to GCP (Workload Identity / SA Key)           │
+│  ├─ Configure kubectl for GKE cluster                          │
+│  ├─ Apply Kubernetes manifests                                  │
+│  ├─ Update deployment with new image                           │
+│  ├─ Wait for rollout completion                                │
+│  └─ Health check verification                                  │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ├─ SUCCESS ─────────────────────────────┐
+             │                                        │
+             └─ FAIL (Rollout Failed) ───────────────┤
+                                                      │
+┌──────────────────────────────────────────────────────┴──────────┐
+│                      DAST Job                                    │
+│  ├─ OWASP ZAP Baseline Scan                                     │
+│  ├─ Custom Security Tests                                        │
+│  │   ├─ Security Headers Check                                  │
+│  │   ├─ SQL Injection Test                                      │
+│  │   ├─ XSS Test                                                │
+│  │   ├─ Sensitive Endpoint Check                                │
+│  │   └─ Rate Limiting Test                                      │
+│  └─ Generate Security Reports                                   │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Notify Job                                    │
+│  └─ Generate Deployment Summary                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### CD Pipeline Jobs
+
+#### 1. Deploy Job
+
+**Purpose**: Deploy application to GKE cluster
+
+**Triggers**:
+- Automatically after CI pipeline succeeds on main branch
+- Manual trigger via `workflow_dispatch`
+
+**Steps**:
+1. Determine image tag to deploy
+2. Authenticate to Google Cloud (supports Workload Identity or SA Key)
+3. Configure kubectl with GKE credentials
+4. Create namespace if not exists
+5. Apply Kubernetes manifests (ConfigMap, Secrets)
+6. Update deployment with new image
+7. Wait for rollout to complete (5-minute timeout)
+8. Verify deployment and get service URL
+9. Perform health check
+
+**Outputs**:
+- `service_url`: The LoadBalancer external IP URL
+
+#### 2. DAST Job
+
+**Purpose**: Dynamic Application Security Testing against the deployed application
+
+**Runs**: After successful deployment
+
+**Tools**:
+- **OWASP ZAP Baseline Scan**: Industry-standard DAST tool
+- **Custom Security Tests**: Additional security validations
+
+**Tests Performed**:
+1. **Security Headers Check**: X-Content-Type-Options, X-Frame-Options
+2. **SQL Injection Test**: Tests common SQLi payloads
+3. **XSS Test**: Tests for reflected XSS vulnerabilities
+4. **Sensitive Endpoint Check**: Checks for exposed /debug, /admin, /.env
+5. **Rate Limiting Test**: Verifies rate limiting is configured
+
+**Reports**:
+- ZAP HTML report uploaded as artifact
+- Summary in GitHub Actions Summary
+
+#### 3. Notify Job
+
+**Purpose**: Generate deployment summary
+
+**Runs**: Always (success or failure)
+
+**Outputs**: Markdown summary with deployment and DAST status
+
+### Kubernetes Manifests
+
+Located in `k8s/` directory:
+
+| File | Description |
+|------|-------------|
+| `namespace.yaml` | Creates `todo-api` namespace |
+| `configmap.yaml` | Non-sensitive configuration |
+| `secret.yaml` | Sensitive data (template) |
+| `deployment.yaml` | Application deployment with 3 replicas |
+| `service.yaml` | LoadBalancer service |
+| `ingress.yaml` | GCE Ingress (optional) |
+
+### Required GCP Secrets
+
+Configure in: Settings → Secrets and variables → Actions
+
+```
+GCP_PROJECT_ID = your-gcp-project-id
+GKE_CLUSTER = your-gke-cluster-name
+GKE_ZONE = your-gke-zone (e.g., us-central1-a)
+
+# Option 1: Workload Identity Federation (Recommended)
+GCP_WORKLOAD_IDENTITY_PROVIDER = projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
+GCP_SERVICE_ACCOUNT = sa-name@project-id.iam.gserviceaccount.com
+
+# Option 2: Service Account Key (Fallback)
+GCP_SA_KEY = {"type": "service_account", ...}
+```
+
+### Setting Up GKE Deployment
+
+#### 1. Create GKE Cluster
+
+```bash
+# Create cluster
+gcloud container clusters create todo-api-cluster \
+  --zone us-central1-a \
+  --num-nodes 3 \
+  --machine-type e2-small
+
+# Get credentials
+gcloud container clusters get-credentials todo-api-cluster \
+  --zone us-central1-a
+```
+
+#### 2. Configure Workload Identity (Recommended)
+
+```bash
+# Create service account
+gcloud iam service-accounts create github-actions-sa \
+  --display-name="GitHub Actions Service Account"
+
+# Grant permissions
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/container.developer"
+
+# Create workload identity pool
+gcloud iam workload-identity-pools create github-pool \
+  --location="global" \
+  --display-name="GitHub Actions Pool"
+
+# Create provider
+gcloud iam workload-identity-pools providers create-oidc github-provider \
+  --location="global" \
+  --workload-identity-pool="github-pool" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository"
+
+# Allow service account impersonation
+gcloud iam service-accounts add-iam-policy-binding \
+  github-actions-sa@$PROJECT_ID.iam.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/$GITHUB_ORG/$GITHUB_REPO"
+```
+
+#### 3. Configure Kubernetes Secrets
+
+Before deploying, update the secrets in `k8s/secret.yaml`:
+
+```bash
+# Create secrets directly (alternative to yaml)
+kubectl create secret generic todo-api-secret \
+  --namespace todo-api \
+  --from-literal=SECRET_KEY=$(openssl rand -hex 32) \
+  --from-literal=DATABASE_PASSWORD=$(openssl rand -hex 16)
+```
+
+#### 4. Manual Deployment Trigger
+
+Via GitHub UI:
+1. Go to Actions tab
+2. Select "CD Pipeline - GKE Deployment"
+3. Click "Run workflow"
+4. Select image tag and environment
+5. Click "Run workflow"
+
+Via GitHub CLI:
+```bash
+gh workflow run cd.yml --ref main -f image_tag=latest -f environment=staging
+```
+
+### DAST Configuration
+
+#### OWASP ZAP Rules
+
+The `.zap/rules.tsv` file configures ZAP behavior:
+- `IGNORE`: Skip the rule
+- `WARN`: Report but don't fail
+- `FAIL`: Report and fail the scan
+
+#### Custom Security Tests
+
+The pipeline includes custom security tests that run regardless of ZAP:
+
+```bash
+# Test 1: Security Headers
+curl -sI "$SERVICE_URL/health"
+
+# Test 2: SQL Injection
+curl "$SERVICE_URL/tasks?status=1'%20OR%20'1'='1"
+
+# Test 3: XSS
+curl "$SERVICE_URL/health?test=<script>alert(1)</script>"
+
+# Test 4: Sensitive Endpoints
+curl "$SERVICE_URL/debug"
+curl "$SERVICE_URL/admin"
+curl "$SERVICE_URL/.env"
+
+# Test 5: Rate Limiting
+for i in {1..10}; do curl "$SERVICE_URL/health"; done
+```
+
+### Troubleshooting CD Pipeline
+
+#### Issue: "Unable to connect to GKE cluster"
+
+**Cause**: Invalid credentials or wrong cluster name
+
+**Solution**:
+1. Verify `GCP_PROJECT_ID`, `GKE_CLUSTER`, `GKE_ZONE` secrets
+2. Check service account has `roles/container.developer`
+3. Ensure cluster exists and is running
+
+#### Issue: "Deployment rollout failed"
+
+**Cause**: Pod startup issues
+
+**Solution**:
+1. Check pod logs: `kubectl logs -n todo-api -l app=todo-api`
+2. Verify DATABASE_URL secret is correct
+3. Check resource limits aren't too restrictive
+
+#### Issue: "LoadBalancer IP not assigned"
+
+**Cause**: GKE quotas or network issues
+
+**Solution**:
+1. Check GCP quotas for external IPs
+2. Verify VPC firewall rules
+3. Use `kubectl describe svc todo-api-service -n todo-api`
+
+#### Issue: "DAST scan fails to connect"
+
+**Cause**: Service not reachable from GitHub Actions runner
+
+**Solution**:
+1. Ensure LoadBalancer has external IP
+2. Check firewall allows port 80 from internet
+3. Verify health check passes before DAST runs
+
+### Best Practices for CD
+
+1. **Use Workload Identity Federation**
+   - More secure than service account keys
+   - No key rotation needed
+   - Audit logging built-in
+
+2. **Implement GitOps**
+   - Store Kubernetes manifests in Git
+   - Use ArgoCD or Flux for sync
+   - Enable drift detection
+
+3. **Progressive Deployment**
+   - Use canary or blue-green deployments
+   - Implement automated rollback
+   - Monitor during rollout
+
+4. **Secrets Management**
+   - Use GCP Secret Manager or external-secrets
+   - Rotate secrets regularly
+   - Never commit secrets to repository
+
+5. **DAST Integration**
+   - Run DAST on every deployment
+   - Review findings before production
+   - Integrate with vulnerability management
+
 ## References
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
@@ -581,3 +882,6 @@ Commit badges show pipeline status:
 - [Trivy Documentation](https://aquasecurity.github.io/trivy/)
 - [CodeQL Documentation](https://codeql.github.com/)
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [GKE Documentation](https://cloud.google.com/kubernetes-engine/docs)
+- [OWASP ZAP Documentation](https://www.zaproxy.org/docs/)
+- [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation)

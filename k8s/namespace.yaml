@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: todo-api
+  labels:
+    app: todo-api
+    environment: production

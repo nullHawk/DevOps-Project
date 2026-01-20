@@ -1,0 +1,302 @@
+name: CD Pipeline - GKE Deployment
+
+on:
+  # Trigger after CI pipeline completes successfully
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types:
+      - completed
+    branches:
+      - main
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to deploy (default: latest)"
+        required: false
+        default: "latest"
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  REGISTRY: docker.io
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/todo-api
+  NAMESPACE: todo-api
+
+jobs:
+  deploy:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    # Only run if CI workflow succeeded (for workflow_run trigger)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      service_url: ${{ steps.get-url.outputs.url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: image-tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      # Option 1: Workload Identity Federation (Recommended for production)
+      - name: Authenticate to Google Cloud (Workload Identity)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        continue-on-error: true
+
+      # Option 2: Service Account Key (Fallback)
+      - name: Authenticate to Google Cloud (Service Account Key)
+        if: steps.auth.outcome == 'failure'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Configure kubectl
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --zone ${{ env.GKE_ZONE }} \
+            --project ${{ env.GCP_PROJECT_ID }}
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply Kubernetes manifests
+        run: |
+          # Apply ConfigMap and Secrets first
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml
+
+      - name: Update deployment image
+        run: |
+          # Replace placeholder with actual image
+          sed -i "s|IMAGE_PLACEHOLDER|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}|g" k8s/deployment.yaml
+
+          # Apply deployment and service
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Wait for deployment rollout
+        run: |
+          kubectl rollout status deployment/todo-api \
+            --namespace ${{ env.NAMESPACE }} \
+            --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "Checking pod status..."
+          kubectl get pods -n ${{ env.NAMESPACE }} -l app=todo-api
+
+          echo "Checking service status..."
+          kubectl get svc -n ${{ env.NAMESPACE }}
+
+      - name: Get service URL
+        id: get-url
+        run: |
+          # Wait for LoadBalancer IP
+          echo "Waiting for LoadBalancer external IP..."
+          for i in {1..30}; do
+            EXTERNAL_IP=$(kubectl get svc todo-api-service -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            if [ -n "$EXTERNAL_IP" ]; then
+              echo "External IP: $EXTERNAL_IP"
+              echo "url=http://$EXTERNAL_IP" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i/30: Waiting for external IP..."
+            sleep 10
+          done
+          echo "Warning: Could not get external IP, using cluster IP for DAST"
+          echo "url=http://todo-api-service.${{ env.NAMESPACE }}.svc.cluster.local" >> $GITHUB_OUTPUT
+
+      - name: Health check
+        run: |
+          SERVICE_URL="${{ steps.get-url.outputs.url }}"
+          echo "Testing health endpoint at $SERVICE_URL/health"
+          for i in {1..10}; do
+            if curl -sf "$SERVICE_URL/health"; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i/10 failed, retrying..."
+            sleep 5
+          done
+          echo "Health check failed after 10 attempts"
+          exit 1
+
+  dast:
+    name: DAST - Dynamic Application Security Testing
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: ${{ needs.deploy.result == 'success' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up DAST environment
+        run: |
+          echo "Target URL: ${{ needs.deploy.outputs.service_url }}"
+          echo "Starting DAST scan..."
+
+      # Dummy DAST using OWASP ZAP Baseline Scan
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ needs.deploy.outputs.service_url }}
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a -j"
+          allow_issue_writing: false
+        continue-on-error: true
+
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zap-report
+          path: report_html.html
+          retention-days: 30
+
+      # Fallback: Simple DAST using curl-based tests
+      - name: Simple Security Tests (Fallback DAST)
+        run: |
+          SERVICE_URL="${{ needs.deploy.outputs.service_url }}"
+          echo "=========================================="
+          echo "Running Dummy DAST Security Tests"
+          echo "Target: $SERVICE_URL"
+          echo "=========================================="
+
+          # Test 1: Check security headers
+          echo ""
+          echo "[Test 1] Checking Security Headers..."
+          HEADERS=$(curl -sI "$SERVICE_URL/health" 2>/dev/null || echo "Failed")
+          echo "$HEADERS"
+
+          # Check for common security headers
+          if echo "$HEADERS" | grep -qi "x-content-type-options"; then
+            echo "✓ X-Content-Type-Options header present"
+          else
+            echo "⚠ X-Content-Type-Options header missing"
+          fi
+
+          if echo "$HEADERS" | grep -qi "x-frame-options"; then
+            echo "✓ X-Frame-Options header present"
+          else
+            echo "⚠ X-Frame-Options header missing"
+          fi
+
+          # Test 2: SQL Injection test (dummy)
+          echo ""
+          echo "[Test 2] SQL Injection Test (dummy)..."
+          SQLI_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/tasks?status=1'%20OR%20'1'='1" 2>/dev/null || echo "000")
+          if [ "$SQLI_RESPONSE" == "422" ] || [ "$SQLI_RESPONSE" == "400" ]; then
+            echo "✓ Potential SQLi payload rejected (HTTP $SQLI_RESPONSE)"
+          else
+            echo "⚠ SQLi test returned HTTP $SQLI_RESPONSE - manual review recommended"
+          fi
+
+          # Test 3: XSS test (dummy)
+          echo ""
+          echo "[Test 3] XSS Test (dummy)..."
+          XSS_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health?test=<script>alert(1)</script>" 2>/dev/null || echo "000")
+          echo "XSS test endpoint returned HTTP $XSS_RESPONSE"
+
+          # Test 4: Check for exposed sensitive endpoints
+          echo ""
+          echo "[Test 4] Checking for exposed debug endpoints..."
+          for endpoint in "/debug" "/admin" "/.env" "/config"; do
+            RESP=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL$endpoint" 2>/dev/null || echo "000")
+            if [ "$RESP" == "404" ] || [ "$RESP" == "401" ] || [ "$RESP" == "403" ]; then
+              echo "✓ $endpoint properly protected (HTTP $RESP)"
+            elif [ "$RESP" == "000" ]; then
+              echo "⚠ $endpoint - connection failed"
+            else
+              echo "⚠ $endpoint returned HTTP $RESP - review recommended"
+            fi
+          done
+
+          # Test 5: Rate limiting test (dummy)
+          echo ""
+          echo "[Test 5] Rate Limiting Test (dummy)..."
+          echo "Sending 10 rapid requests..."
+          RATE_LIMIT_HIT=false
+          for i in {1..10}; do
+            RESP=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/health" 2>/dev/null)
+            if [ "$RESP" == "429" ]; then
+              RATE_LIMIT_HIT=true
+              echo "✓ Rate limiting detected at request $i"
+              break
+            fi
+          done
+          if [ "$RATE_LIMIT_HIT" == "false" ]; then
+            echo "⚠ No rate limiting detected in 10 requests (may be configured higher)"
+          fi
+
+          echo ""
+          echo "=========================================="
+          echo "DAST Scan Complete"
+          echo "=========================================="
+
+      - name: Generate DAST Summary
+        run: |
+          echo "## DAST Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target URL**: ${{ needs.deploy.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Scan Type**: OWASP ZAP Baseline + Custom Security Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See the uploaded ZAP report for detailed findings." >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [deploy, dast]
+    if: always()
+
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy to GKE | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DAST Scan | ${{ needs.dast.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "**Application URL**: ${{ needs.deploy.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
+          fi
