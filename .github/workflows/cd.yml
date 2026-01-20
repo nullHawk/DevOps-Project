@@ -128,6 +128,9 @@ jobs:
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
 
+          # Force restart to pick up new postgres service
+          kubectl rollout restart deployment/todo-api -n ${{ env.NAMESPACE }}
+
       - name: Wait for deployment rollout
         run: |
           kubectl rollout status deployment/todo-api \
