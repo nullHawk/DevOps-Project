@@ -57,9 +57,9 @@ jobs:
         id: image-tag
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.inputs.image_tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Authenticate to Google Cloud
@@ -118,17 +118,17 @@ jobs:
           # Wait for LoadBalancer IP
           echo "Waiting for LoadBalancer external IP..."
           for i in {1..30}; do
-            EXTERNAL_IP=$(kubectl get svc todo-api-service -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            EXTERNAL_IP=$(kubectl get svc todo-api-service -n "${{ env.NAMESPACE }}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
             if [ -n "$EXTERNAL_IP" ]; then
               echo "External IP: $EXTERNAL_IP"
-              echo "url=http://$EXTERNAL_IP" >> $GITHUB_OUTPUT
+              echo "url=http://${EXTERNAL_IP}" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "Attempt $i/30: Waiting for external IP..."
             sleep 10
           done
           echo "Warning: Could not get external IP, using cluster IP for DAST"
-          echo "url=http://todo-api-service.${{ env.NAMESPACE }}.svc.cluster.local" >> $GITHUB_OUTPUT
+          echo "url=http://todo-api-service.${{ env.NAMESPACE }}.svc.cluster.local" >> "$GITHUB_OUTPUT"
 
       - name: Health check
         run: |
@@ -260,13 +260,15 @@ jobs:
 
       - name: Generate DAST Summary
         run: |
-          echo "## DAST Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target URL**: ${{ needs.deploy.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Scan Type**: OWASP ZAP Baseline + Custom Security Tests" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status**: Completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See the uploaded ZAP report for detailed findings." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## DAST Summary"
+            echo ""
+            echo "- **Target URL**: ${{ needs.deploy.outputs.service_url }}"
+            echo "- **Scan Type**: OWASP ZAP Baseline + Custom Security Tests"
+            echo "- **Status**: Completed"
+            echo ""
+            echo "See the uploaded ZAP report for detailed findings."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   notify:
     name: Deployment Notification
@@ -277,14 +279,16 @@ jobs:
     steps:
       - name: Deployment Summary
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Deploy to GKE | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| DAST Scan | ${{ needs.dast.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Deployment Summary"
+            echo ""
+            echo "| Stage | Status |"
+            echo "|-------|--------|"
+            echo "| Deploy to GKE | ${{ needs.deploy.result }} |"
+            echo "| DAST Scan | ${{ needs.dast.result }} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.deploy.result }}" == "success" ]; then
-            echo "**Application URL**: ${{ needs.deploy.outputs.service_url }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Application URL**: ${{ needs.deploy.outputs.service_url }}" >> "$GITHUB_STEP_SUMMARY"
           fi
